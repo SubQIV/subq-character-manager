@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Phase 0 Drive Test</title>
+  <link rel="stylesheet" href="style.css">
+  <script async defer src="https://accounts.google.com/gsi/client"
+    onload="window.__gisLoaded = true; window.dispatchEvent(new Event('gis-loaded'))"></script>
+  <script async defer src="https://apis.google.com/js/api.js"
+    onload="window.__gapiLoaded = true; window.dispatchEvent(new Event('gapi-loaded'))"></script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div>
+      <p class="eyebrow">SubQ Character Manager</p>
+      <h1>Phase 0: Drive test</h1>
+    </div>
+    <div class="chips">
+      <span id="net" class="chip">Checking connection</span>
+      <span id="who" class="chip">Not signed in</span>
+    </div>
+  </header>
+
+  <main>
+    <details class="card guide" open>
+      <summary>How to run the test</summary>
+      <ol>
+        <li>On each device, give it a name below, such as <em>DM laptop</em> or <em>Dan's phone</em>.</li>
+        <li><strong>Round 1</strong> uses <em>Picked files only</em>. On device A, sign in with your account and tap <em>Create test table</em>. Then enter the second account's email and tap <em>Share</em>. If sharing fails, share the folder from Google Drive as Editor.</li>
+        <li>On device B, sign in with the second account. Tap <em>Pick from Drive</em>, find <em>SubQ Table (phase 0 test)</em> under shared items, pick it, then tap <em>Scan table</em>.</li>
+        <li>Open Howerd on both devices. Change HP on one and wait up to 15 seconds: the other should update by itself.</li>
+        <li>Count down together and tap <em>Race test</em> on both devices at the same moment. Afterwards both should show the same HP and history.</li>
+        <li>Turn on airplane mode on one device, make a few changes, turn it off, and watch the changes save.</li>
+        <li>On device B, tap <em>Add test character</em> in the Dan folder. On device A, tap <em>Scan table</em> and try to open it.</li>
+        <li>Tap <em>Copy report</em> on each device and paste both reports into the chat.</li>
+        <li><strong>Round 2:</strong> tap <em>Revoke access</em>, switch to <em>All of Drive</em>, tap <em>Clear log and counts</em>, sign in, and repeat steps 3 to 8 with the same folder.</li>
+      </ol>
+    </details>
+
+    <section class="card">
+      <h2>1. This device</h2>
+      <label class="field">
+        <span>Device name</span>
+        <input id="deviceLabel" type="text" placeholder="e.g. Dan's phone" autocomplete="off">
+      </label>
+      <p class="hint">Shown in the history and on the last-saved banner.</p>
+    </section>
+
+    <section class="card">
+      <h2>2. Sign in</h2>
+      <fieldset class="modes">
+        <legend>Drive permission to test</legend>
+        <label><input type="radio" name="mode" value="file"> Picked files only <span class="muted">(drive.file)</span></label>
+        <label><input type="radio" name="mode" value="full"> All of Drive <span class="muted">(drive)</span></label>
+      </fieldset>
+      <div class="row">
+        <button id="signIn" class="primary" type="button">Sign in with Google</button>
+        <button id="signOut" type="button">Sign out</button>
+        <button id="revoke" type="button">Revoke access</button>
+      </div>
+      <p id="authStatus" class="status">Not signed in.</p>
+    </section>
+
+    <section class="card">
+      <h2>3. Table folder</h2>
+      <p id="tableStatus" class="status">No table folder yet.</p>
+      <div class="row">
+        <button id="createTable" type="button">Create test table</button>
+        <button id="pick" type="button">Pick from Drive</button>
+        <button id="scan" type="button">Scan table</button>
+      </div>
+      <div class="row share">
+        <input id="shareEmail" type="email" placeholder="Second account's email" autocomplete="off">
+        <button id="share" type="button">Share</button>
+      </div>
+      <div id="tree" class="tree"></div>
+    </section>
+
+    <section id="character" class="card" hidden>
+      <h2 id="charName">Character</h2>
+      <p id="lastEdited" class="banner"></p>
+      <div class="hp">
+        <span id="hp" class="hp-now">–</span>
+        <span id="hpMax" class="hp-max"></span>
+      </div>
+      <div class="row pad">
+        <button type="button" data-delta="-1">−1</button>
+        <button type="button" data-delta="-5">−5</button>
+        <button type="button" data-delta="5">+5</button>
+        <button id="longRest" type="button">Long rest</button>
+      </div>
+      <div class="row">
+        <button id="undo" type="button">Undo</button>
+        <button id="race" type="button">Race test</button>
+        <button id="syncNow" type="button">Sync now</button>
+      </div>
+      <p id="syncStatus" class="status"></p>
+      <h3>History</h3>
+      <ul id="history" class="history"></ul>
+    </section>
+
+    <section class="card">
+      <h2>4. Report</h2>
+      <div class="row">
+        <button id="copyReport" class="primary" type="button">Copy report</button>
+        <button id="clearLog" type="button">Clear log and counts</button>
+      </div>
+      <textarea id="reportOut" rows="8" hidden readonly></textarea>
+      <ul id="log" class="log"></ul>
+    </section>
+  </main>
+</body>
+</html>
