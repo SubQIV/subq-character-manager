@@ -11,6 +11,7 @@ export function CalcSheet({
   onClose,
   act,
   signedValues = true,
+  allowOverride = true,
   children,
 }: {
   calc: Calc | null;
@@ -18,6 +19,7 @@ export function CalcSheet({
   onClose: () => void;
   act: TabProps['act'];
   signedValues?: boolean;
+  allowOverride?: boolean;
   children?: ReactNode;
 }) {
   return (
@@ -42,7 +44,7 @@ export function CalcSheet({
             </p>
           ))}
           {children}
-          <Override calc={calc} act={act} signedValues={signedValues} />
+          {allowOverride && <Override calc={calc} act={act} signedValues={signedValues} />}
         </>
       )}
     </Sheet>

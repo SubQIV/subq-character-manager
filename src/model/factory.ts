@@ -2,7 +2,12 @@ import {
   ABILITIES,
   SKILLS,
   type Ability,
+  type ArmorInfo,
   type CharacterState,
+  type Charges,
+  type Item,
+  type MagicInfo,
+  type WeaponInfo,
   type Edition,
   type HitDie,
   type Proficiency,
@@ -37,6 +42,53 @@ export function newTracker(fields: Partial<Tracker> & Pick<Tracker, 'name'>): Tr
     ...fields,
   };
 }
+
+export function newItem(fields: Partial<Item> & Pick<Item, 'name'>): Item {
+  return {
+    id: uid(),
+    quantity: 1,
+    weight: 0,
+    value: '',
+    description: '',
+    equipped: false,
+    containerId: null,
+    isContainer: false,
+    ignoreContentsWeight: false,
+    armor: null,
+    weapon: null,
+    magic: null,
+    charges: null,
+    modifiers: [],
+    packRef: null,
+    ...fields,
+  };
+}
+
+export const blankWeapon = (): WeaponInfo => ({
+  damage: '1d6',
+  damageType: '',
+  versatile: '',
+  ranged: false,
+  finesse: false,
+  proficient: true,
+  magicBonus: 0,
+  range: '',
+  properties: '',
+  mastery: '',
+});
+
+export const blankArmor = (): ArmorInfo => ({ kind: 'light', base: 11, dexCap: null, stealthDisadvantage: false, strengthRequired: null });
+
+export const blankMagic = (): MagicInfo => ({
+  rarity: '',
+  requiresAttunement: false,
+  attuned: false,
+  identified: true,
+  unidentifiedName: '',
+  unidentifiedDescription: '',
+});
+
+export const blankCharges = (): Charges => ({ max: 3, current: 3, recharge: 'dawn', rechargeAmount: '' });
 
 export interface NewCharacterInput {
   name: string;

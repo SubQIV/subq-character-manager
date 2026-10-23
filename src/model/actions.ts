@@ -3,7 +3,7 @@
 
 import { preview, type Change, type Path } from './changes';
 import { abilityMod, derive, signed, type Derived } from './derive';
-import { newTracker, uid } from './factory';
+import { newItem, newTracker, uid } from './factory';
 import {
   ABILITY_NAMES,
   HIT_DICE,
@@ -11,6 +11,9 @@ import {
   type AcFormula,
   type Ability,
   type ActiveCondition,
+  type Charges,
+  type Item,
+  type Note,
   type CharacterState,
   type ClassLevel,
   type HitDie,
@@ -220,6 +223,139 @@ export function changeExhaustion(state: CharacterState, delta: number): Action {
 }
 
 // ---------------------------------------------------------------------------
+// Items
+// ---------------------------------------------------------------------------
+
+const itemPath = (id: string, ...rest: (string | number)[]): Path => ['inventory', { id }, ...rest];
+
+/** The name to show: unidentified magic items show their placeholder name. */
+export function itemName(item: Item): string {
+  if (item.magic && !item.magic.identified) return item.magic.unidentifiedName || 'Unidentified item';
+  return item.name;
+}
+
+function acChange(state: CharacterState, change: Change): string {
+  const before = derive(state).ac.value;
+  const after = derive(preview(state, change)).ac.value;
+  return before === after ? '' : ` (AC ${before} → ${after})`;
+}
+
+export function addItem(fields: Partial<Item> & Pick<Item, 'name'>): Action {
+  const item = newItem(fields);
+  return {
+    change: { t: 'insert', path: ['inventory'], item },
+    label: `Added ${itemName(item)}${item.quantity > 1 ? ` ×${item.quantity}` : ''}`,
+    scope: ['inventory', `item:${item.id}`],
+  };
+}
+
+export function updateItem(item: Item, fields: Partial<Omit<Item, 'id'>>): Action {
+  const changes: Change[] = Object.entries(fields).map(([key, value]) => ({ t: 'set', path: itemPath(item.id, key), value }));
+  return {
+    change: { t: 'batch', changes },
+    label: `Edited ${fields.name && fields.name !== item.name ? `${item.name} (now ${fields.name})` : itemName(item)}`,
+    scope: ['inventory', `item:${item.id}`],
+  };
+}
+
+export function removeItem(state: CharacterState, item: Item): Action {
+  const changes: Change[] = state.inventory
+    .filter((other) => other.containerId === item.id)
+    .map((other) => ({ t: 'set', path: itemPath(other.id, 'containerId'), value: null }));
+  changes.push({ t: 'remove', path: ['inventory'], id: item.id });
+  const freed = changes.length - 1;
+  return {
+    change: { t: 'batch', changes },
+    label: `Removed ${itemName(item)}${freed ? ` (its ${freed} item${freed === 1 ? '' : 's'} moved out)` : ''}`,
+    scope: ['inventory', `item:${item.id}`],
+  };
+}
+
+export function setEquipped(state: CharacterState, item: Item, equipped: boolean): Action {
+  const change: Change = { t: 'set', path: itemPath(item.id, 'equipped'), value: equipped };
+  return {
+    change,
+    label: `${equipped ? 'Equipped' : 'Unequipped'} ${itemName(item)}${acChange(state, change)}`,
+    scope: ['inventory', `item:${item.id}`],
+  };
+}
+
+export function setAttuned(state: CharacterState, item: Item, attuned: boolean): Action {
+  const change: Change = { t: 'set', path: itemPath(item.id, 'magic', 'attuned'), value: attuned };
+  return {
+    change,
+    label: `${attuned ? 'Attuned to' : 'Ended attunement to'} ${itemName(item)}${acChange(state, change)}`,
+    scope: ['inventory', `item:${item.id}`, 'attunement'],
+  };
+}
+
+export function adjustQuantity(item: Item, delta: number): Action {
+  const next = Math.max(0, item.quantity + delta);
+  return {
+    change: { t: 'add', path: itemPath(item.id, 'quantity'), delta, min: 0 },
+    label: delta < 0 ? `Used ${-delta} ${itemName(item)} (${next} left)` : `${itemName(item)} ×${item.quantity} → ×${next}`,
+    scope: ['inventory', `item:${item.id}`],
+  };
+}
+
+export function useCharges(item: Item, delta: number): Action {
+  const charges = item.charges!;
+  const next = Math.min(charges.max, Math.max(0, charges.current + delta));
+  return {
+    change: { t: 'add', path: itemPath(item.id, 'charges', 'current'), delta, min: 0, max: itemPath(item.id, 'charges', 'max') },
+    label: `${itemName(item)}: ${charges.current} → ${next} charges`,
+    scope: ['inventory', `item:${item.id}`, 'charges'],
+  };
+}
+
+export function identifyItem(item: Item): Action {
+  return {
+    change: { t: 'set', path: itemPath(item.id, 'magic', 'identified'), value: true },
+    label: `Identified ${itemName(item)} as ${item.name}`,
+    scope: ['inventory', `item:${item.id}`],
+  };
+}
+
+export function moveItem(item: Item, container: Item | null): Action {
+  return {
+    change: { t: 'set', path: itemPath(item.id, 'containerId'), value: container?.id ?? null },
+    label: container ? `Put ${itemName(item)} in ${itemName(container)}` : `Took ${itemName(item)} out`,
+    scope: ['inventory', `item:${item.id}`],
+  };
+}
+
+/** How a recharge amount is read: blank or "all" refills, a number adds that many, anything else is rolled at the table. */
+export function rechargeKind(amount: string): { kind: 'all' } | { kind: 'fixed'; value: number } | { kind: 'roll'; formula: string } {
+  const text = amount.trim();
+  if (!text || text.toLowerCase() === 'all') return { kind: 'all' };
+  if (/^\d+$/.test(text)) return { kind: 'fixed', value: parseInt(text, 10) };
+  return { kind: 'roll', formula: text };
+}
+
+export function itemsRecharging(state: CharacterState, rules: Charges['recharge'][]): Item[] {
+  return state.inventory.filter((item) => item.charges && rules.includes(item.charges.recharge) && item.charges.current < item.charges.max);
+}
+
+/** Items that need a roll entered before they can recharge. */
+export function rechargeRollsNeeded(state: CharacterState, rules: Charges['recharge'][]): Item[] {
+  return itemsRecharging(state, rules).filter((item) => rechargeKind(item.charges!.rechargeAmount).kind === 'roll');
+}
+
+function rechargeChanges(state: CharacterState, rules: Charges['recharge'][], rolls: Record<string, number>): { changes: Change[]; names: string[] } {
+  const changes: Change[] = [];
+  const names: string[] = [];
+  for (const item of itemsRecharging(state, rules)) {
+    const charges = item.charges!;
+    const how = rechargeKind(charges.rechargeAmount);
+    const amount = how.kind === 'all' ? charges.max - charges.current : how.kind === 'fixed' ? how.value : rolls[item.id];
+    if (amount === undefined || amount <= 0) continue;
+    changes.push({ t: 'add', path: itemPath(item.id, 'charges', 'current'), delta: amount, min: 0, max: itemPath(item.id, 'charges', 'max') });
+    names.push(`${itemName(item)} +${Math.min(amount, charges.max - charges.current)} charges`);
+  }
+  return { changes, names };
+}
+
+// ---------------------------------------------------------------------------
 // Rests
 // ---------------------------------------------------------------------------
 
@@ -241,7 +377,12 @@ export interface HitDieRoll {
   rolled: number;
 }
 
-export function shortRest(state: CharacterState, rolls: HitDieRoll[]): Action {
+/** Rolled recharge amounts for items whose recharge is a dice formula, by item id. */
+export type RechargeRolls = Record<string, number>;
+
+const itemScopes = (state: CharacterState) => state.inventory.filter((item) => item.charges).map((item) => `item:${item.id}`);
+
+export function shortRest(state: CharacterState, rolls: HitDieRoll[], recharges: RechargeRolls = {}): Action {
   const con = abilityMod(derive(state).abilities.con.score.value);
   const changes: Change[] = [];
   const parts: string[] = [];
@@ -259,14 +400,17 @@ export function shortRest(state: CharacterState, rolls: HitDieRoll[]): Action {
   const reset = resetTrackers(state, ['short']);
   changes.push(...reset.changes);
   if (reset.names.length) parts.push(`reset ${reset.names.join(', ')}`);
+  const items = rechargeChanges(state, ['short'], recharges);
+  changes.push(...items.changes);
+  parts.push(...items.names);
   return {
     change: { t: 'batch', changes },
     label: parts.length ? `Short rest: ${parts.join('; ')}` : 'Short rest',
-    scope: ['rest', 'hp', 'slots', ...state.trackers.map((t) => `tracker:${t.id}`)],
+    scope: ['rest', 'hp', 'slots', ...state.trackers.map((t) => `tracker:${t.id}`), ...itemScopes(state)],
   };
 }
 
-export function longRest(state: CharacterState, derived: Derived = derive(state)): Action {
+export function longRest(state: CharacterState, derived: Derived = derive(state), recharges: RechargeRolls = {}): Action {
   const changes: Change[] = [];
   const parts: string[] = [];
   const max = derived.hpMax.value;
@@ -309,6 +453,9 @@ export function longRest(state: CharacterState, derived: Derived = derive(state)
   const reset = resetTrackers(state, ['short', 'long']);
   changes.push(...reset.changes);
   if (reset.names.length) parts.push(`reset ${reset.names.join(', ')}`);
+  const items = rechargeChanges(state, ['short', 'long'], recharges);
+  changes.push(...items.changes);
+  parts.push(...items.names);
 
   if (state.exhaustion > 0) {
     changes.push({ t: 'add', path: ['exhaustion'], delta: -1, min: 0, max: 6 });
@@ -317,16 +464,18 @@ export function longRest(state: CharacterState, derived: Derived = derive(state)
   return {
     change: { t: 'batch', changes },
     label: parts.length ? `Long rest: ${parts.join('; ')}` : 'Long rest',
-    scope: ['rest', 'hp', 'slots', 'exhaustion', ...state.trackers.map((t) => `tracker:${t.id}`)],
+    scope: ['rest', 'hp', 'slots', 'exhaustion', ...state.trackers.map((t) => `tracker:${t.id}`), ...itemScopes(state)],
   };
 }
 
-export function dawn(state: CharacterState): Action {
+export function dawn(state: CharacterState, recharges: RechargeRolls = {}): Action {
   const reset = resetTrackers(state, ['dawn']);
+  const items = rechargeChanges(state, ['dawn'], recharges);
+  const parts = [...(reset.names.length ? [`reset ${reset.names.join(', ')}`] : []), ...items.names];
   return {
-    change: { t: 'batch', changes: reset.changes },
-    label: reset.names.length ? `Dawn: reset ${reset.names.join(', ')}` : 'Dawn',
-    scope: ['rest', ...state.trackers.map((t) => `tracker:${t.id}`)],
+    change: { t: 'batch', changes: [...reset.changes, ...items.changes] },
+    label: parts.length ? `Dawn: ${parts.join('; ')}` : 'Dawn',
+    scope: ['rest', ...state.trackers.map((t) => `tracker:${t.id}`), ...itemScopes(state)],
   };
 }
 
@@ -463,5 +612,56 @@ export function setHitDiceSpent(die: HitDie, before: number, value: number): Act
     change: { t: 'set', path: ['hitDiceSpent', die], value: Math.max(0, value) },
     label: `Spent d${die} hit dice ${before} → ${Math.max(0, value)}`,
     scope: ['hp', 'hitDice'],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Notes, backstory and portrait
+// ---------------------------------------------------------------------------
+
+const PERSONALITY_NAMES = {
+  traits: 'Personality traits',
+  ideals: 'Ideals',
+  bonds: 'Bonds',
+  flaws: 'Flaws',
+  appearance: 'Appearance',
+  allies: 'Allies and organizations',
+};
+
+export type PersonalityField = keyof typeof PERSONALITY_NAMES;
+
+const size = (text: string) => `${text.length.toLocaleString()} characters`;
+
+export function setBackstory(value: string): Action {
+  return { change: { t: 'set', path: ['backstory'], value }, label: `Backstory edited (${size(value)})`, scope: ['notes'] };
+}
+
+export function setPersonality(field: PersonalityField, value: string): Action {
+  return {
+    change: { t: 'set', path: ['personality', field], value },
+    label: `${PERSONALITY_NAMES[field]} edited`,
+    scope: ['notes'],
+  };
+}
+
+export function addNote(title: string, body: string): Action {
+  const note: Note = { id: uid(), title: title.trim() || 'Untitled note', body };
+  return { change: { t: 'insert', path: ['notes'], item: note }, label: `Added note: ${note.title}`, scope: ['notes'] };
+}
+
+export function updateNote(note: Note, fields: Partial<Omit<Note, 'id'>>): Action {
+  const changes: Change[] = Object.entries(fields).map(([key, value]) => ({ t: 'set', path: ['notes', { id: note.id }, key], value }));
+  return { change: { t: 'batch', changes }, label: `Edited note: ${fields.title ?? note.title}`, scope: ['notes'] };
+}
+
+export function removeNote(note: Note): Action {
+  return { change: { t: 'remove', path: ['notes'], id: note.id }, label: `Deleted note: ${note.title}`, scope: ['notes'] };
+}
+
+export function setPortrait(key: string | null): Action {
+  return {
+    change: { t: 'set', path: ['portrait'], value: key },
+    label: key ? 'Portrait changed' : 'Portrait removed',
+    scope: ['notes', 'identity'],
   };
 }

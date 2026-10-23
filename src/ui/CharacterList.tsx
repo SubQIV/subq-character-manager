@@ -1,5 +1,6 @@
 import { useStore } from '../store/characters';
 import { EditionBadge } from './common';
+import { Avatar } from './notes/Portrait';
 
 export function CharacterList() {
   const s = useStore();
@@ -38,9 +39,7 @@ export function CharacterList() {
             {views.map(({ doc, state, derived }) => (
               <li key={doc.id}>
                 <a className="char-row" href={`#/c/${doc.id}/play`}>
-                  <span className="avatar graph" aria-hidden="true">
-                    {state.name.trim()[0]?.toUpperCase() ?? '?'}
-                  </span>
+                  <Avatar name={state.name} portrait={state.portrait} />
                   <span className="line-main">
                     <span className="char-name">{state.name}</span>
                     <br />

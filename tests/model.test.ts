@@ -9,7 +9,7 @@ import {
   type Entry,
 } from '../src/model/changes';
 import { derive, proficiencyFor } from '../src/model/derive';
-import { newCharacter, type NewCharacterInput } from '../src/model/factory';
+import { newCharacter, newItem, type NewCharacterInput } from '../src/model/factory';
 import type { CharacterState, Item } from '../src/model/types';
 
 const input: NewCharacterInput = {
@@ -243,12 +243,10 @@ describe('calculations', () => {
 
   it('equipped armor replaces unarmored formulas and caps Dex', () => {
     const s = sheet({ abilities: { ...input.abilities, dex: 18 } });
-    const armor: Item = {
-      id: 'mail', name: 'Half plate', quantity: 1, weight: 40, value: '750 gp', description: '', equipped: true,
-      containerId: null, isContainer: false, ignoreContentsWeight: false,
+    const armor: Item = newItem({
+      id: 'mail', name: 'Half plate', weight: 40, value: '750 gp', equipped: true,
       armor: { kind: 'medium', base: 15, dexCap: 2, stealthDisadvantage: true, strengthRequired: null },
-      magic: null, charges: null, modifiers: [], packRef: null,
-    };
+    });
     const shield: Item = { ...armor, id: 'shield', name: 'Shield', weight: 6, armor: { kind: 'shield', base: 2, dexCap: null, stealthDisadvantage: false, strengthRequired: null } };
     s.base.inventory.push(armor, shield);
     const d = derive(s.state);
@@ -274,13 +272,11 @@ describe('calculations', () => {
 
   it('items apply bonuses only while equipped, and attuned when required', () => {
     const s = sheet();
-    const ring: Item = {
-      id: 'ring', name: 'Ring of Protection', quantity: 1, weight: 0, value: '', description: '', equipped: true,
-      containerId: null, isContainer: false, ignoreContentsWeight: false, armor: null,
+    const ring: Item = newItem({
+      id: 'ring', name: 'Ring of Protection', equipped: true,
       magic: { rarity: 'rare', requiresAttunement: true, attuned: false, identified: true, unidentifiedName: '', unidentifiedDescription: '' },
-      charges: null, packRef: null,
       modifiers: [{ id: 'm', source: '', target: 'ac', mode: 'add', value: 1, stack: '', enabled: true }],
-    };
+    });
     s.base.inventory.push(ring);
     expect(derive(s.state).ac.value).toBe(12);
     ring.magic!.attuned = true;
@@ -325,10 +321,7 @@ describe('calculations', () => {
 
   it('carried weight counts coins and skips bag of holding contents', () => {
     const s = sheet();
-    const bag: Item = {
-      id: 'bag', name: 'Bag of Holding', quantity: 1, weight: 15, value: '', description: '', equipped: false,
-      containerId: null, isContainer: true, ignoreContentsWeight: true, armor: null, magic: null, charges: null, modifiers: [], packRef: null,
-    };
+    const bag: Item = newItem({ id: 'bag', name: 'Bag of Holding', weight: 15, isContainer: true, ignoreContentsWeight: true });
     const anvil: Item = { ...bag, id: 'anvil', name: 'Anvil', weight: 100, isContainer: false, ignoreContentsWeight: false, containerId: 'bag' };
     const rope: Item = { ...bag, id: 'rope', name: 'Rope', weight: 10, quantity: 2, isContainer: false, ignoreContentsWeight: false };
     s.base.inventory.push(bag, anvil, rope);

@@ -41,8 +41,23 @@ export interface AcCandidate {
   value: number;
 }
 
+export interface Attack {
+  itemId: string;
+  name: string;
+  toHit: Calc;
+  /** e.g. "1d8+3 slashing". */
+  damage: string;
+  /** Two-handed damage for versatile weapons. */
+  versatile: string | null;
+  damageParts: Part[];
+  range: string;
+  properties: string;
+  mastery: string;
+}
+
 export interface Derived {
   level: number;
+  attacks: Attack[];
   abilities: Record<Ability, { score: Calc; mod: number }>;
   proficiency: Calc;
   saves: Record<Ability, Calc>;
@@ -229,9 +244,15 @@ function acCalc(state: CharacterState, mods: Modifier[], abilityMods: Record<Abi
   };
 }
 
-function speedCalc(state: CharacterState, mods: Modifier[]): Calc {
+function speedCalc(state: CharacterState, mods: Modifier[], strength: number): Calc {
   const parts: Part[] = [{ label: 'Base speed', value: state.speed }];
   parts.push(...modifierParts(mods, ['speed'], sum(parts)));
+  for (const item of state.inventory) {
+    const need = item.armor?.strengthRequired;
+    if (itemIsActive(item) && need && strength < need) {
+      parts.push({ label: `${item.name} (needs Strength ${need})`, value: -10 });
+    }
+  }
   const level = state.exhaustion;
   if (state.edition === '2024' && level > 0) {
     parts.push({ label: `Exhaustion ${level} (2024: −5 ft per level)`, value: -5 * level });
@@ -262,7 +283,9 @@ function itemWeight(item: Item, all: Item[], seen = new Set<string>()): number {
 }
 
 function carriedCalc(state: CharacterState): Calc {
-  const topLevel = state.inventory.filter((item) => !item.containerId || !state.inventory.some((c) => c.id === item.containerId));
+  // Items count at the top level unless they sit in something that is still a container.
+  const containerIds = new Set(state.inventory.filter((item) => item.isContainer).map((item) => item.id));
+  const topLevel = state.inventory.filter((item) => !item.containerId || !containerIds.has(item.containerId));
   const parts: Part[] = topLevel
     .map((item) => ({ label: item.quantity > 1 ? `${item.name} ×${item.quantity}` : item.name, value: itemWeight(item, state.inventory) }))
     .filter((part) => part.value > 0)
@@ -315,8 +338,47 @@ export function derive(state: CharacterState): Derived {
     parts.push(...modifierParts(mods, [`skill:${skill.id}`, `check:${skill.ability}`, 'check:all'], sum(parts)));
     checkBonus[skill.id] = sum(parts);
     parts.push(...rolledPenalty);
-    skills[skill.id] = finish(state, `skill:${skill.id}`, skill.name, parts, exhaustion2014Notes(state, 'check'));
+    const notes = exhaustion2014Notes(state, 'check');
+    if (skill.id === 'stealth') {
+      for (const item of state.inventory) {
+        if (itemIsActive(item) && item.armor?.stealthDisadvantage) notes.push(`Disadvantage from ${item.name}`);
+      }
+    }
+    skills[skill.id] = finish(state, `skill:${skill.id}`, skill.name, parts, notes);
   }
+
+  const attacks: Attack[] = state.inventory
+    .filter((item) => item.weapon && item.equipped)
+    .map((item) => {
+      const weapon = item.weapon!;
+      const ability: Ability = weapon.ranged
+        ? 'dex'
+        : weapon.finesse && abilityMods.dex > abilityMods.str
+          ? 'dex'
+          : 'str';
+      const hitParts: Part[] = [{ label: `${ABILITY_NAMES[ability]} modifier`, value: abilityMods[ability] }];
+      if (weapon.proficient) hitParts.push({ label: 'Proficient', value: pb });
+      if (weapon.magicBonus) hitParts.push({ label: 'Magic weapon', value: weapon.magicBonus });
+      hitParts.push(...modifierParts(mods, ['weaponAttack'], sum(hitParts)));
+      hitParts.push(...rolledPenalty);
+      const damageParts: Part[] = [{ label: `${ABILITY_NAMES[ability]} modifier`, value: abilityMods[ability] }];
+      if (weapon.magicBonus) damageParts.push({ label: 'Magic weapon', value: weapon.magicBonus });
+      damageParts.push(...modifierParts(mods, ['weaponDamage'], sum(damageParts)));
+      const bonus = sum(damageParts);
+      const withBonus = (dice: string) => `${dice}${bonus ? signed(bonus) : ''}${weapon.damageType ? ` ${weapon.damageType}` : ''}`;
+      const name = item.magic && !item.magic.identified ? item.magic.unidentifiedName || 'Unidentified weapon' : item.name;
+      return {
+        itemId: item.id,
+        name,
+        toHit: finish(state, `attack:${item.id}`, `${name} attack`, hitParts, exhaustion2014Notes(state, 'attack')),
+        damage: withBonus(weapon.damage || '1'),
+        versatile: weapon.versatile ? withBonus(weapon.versatile) : null,
+        damageParts,
+        range: weapon.range,
+        properties: weapon.properties,
+        mastery: weapon.mastery,
+      };
+    });
 
   const passive = (id: 'perception' | 'insight' | 'investigation', name: string): Calc => {
     const skillValue = state.overrides[`skill:${id}`] ?? checkBonus[id];
@@ -384,8 +446,13 @@ export function derive(state: CharacterState): Derived {
   }
   if (state.deathSaves.failures >= 3) warnings.push('Three failed death saves: the character dies.');
 
+  if (carry.carried.value > carry.capacity.value) {
+    warnings.push(`Carrying ${carry.carried.value} lb, more than your capacity of ${carry.capacity.value} lb.`);
+  }
+
   return {
     level,
+    attacks,
     abilities,
     proficiency,
     saves,
@@ -393,7 +460,7 @@ export function derive(state: CharacterState): Derived {
     passives,
     initiative,
     ac: acCalc(state, mods, abilityMods),
-    speed: speedCalc(state, mods),
+    speed: speedCalc(state, mods, strength),
     hpMax: hpMaxCalc(state, mods),
     spellDC,
     spellAttack,

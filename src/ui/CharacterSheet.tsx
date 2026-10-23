@@ -2,17 +2,23 @@ import { useEffect, useState } from 'react';
 import type { Action } from '../model/actions';
 import { store, useStore } from '../store/characters';
 import { BackLink, EditionBadge, type TabProps } from './common';
+import { GearTab } from './gear/GearTab';
 import { LogTab } from './log/LogTab';
+import { NotesTab } from './notes/NotesTab';
+import { Avatar } from './notes/Portrait';
+import { Attacks, ItemCharges } from './play/Attacks';
 import { Conditions } from './play/Conditions';
 import { DeathSaves, HpBlock } from './play/Hp';
 import { Rests } from './play/Rests';
 import { SpellSlots } from './play/Slots';
-import { Currencies, Resources } from './play/Trackers';
+import { Resources } from './play/Trackers';
 import { StatsTab } from './stats/StatsTab';
 
 const TABS = [
   { id: 'play', label: 'Play' },
   { id: 'stats', label: 'Stats' },
+  { id: 'gear', label: 'Gear' },
+  { id: 'notes', label: 'Notes' },
   { id: 'log', label: 'History' },
 ];
 
@@ -41,6 +47,7 @@ export function CharacterSheet({ id, tab }: { id: string; tab: string }) {
       <header className="topbar">
         <div className="topbar-inner">
           <BackLink />
+          {state.portrait && <Avatar name={state.name} portrait={state.portrait} size={44} />}
           <div className="topbar-title">
             <h1 className="title">{state.name}</h1>
             <div className="topbar-sub">
@@ -71,6 +78,10 @@ export function CharacterSheet({ id, tab }: { id: string; tab: string }) {
         ))}
         {tab === 'stats' ? (
           <StatsTab {...props} />
+        ) : tab === 'gear' ? (
+          <GearTab {...props} />
+        ) : tab === 'notes' ? (
+          <NotesTab {...props} />
         ) : tab === 'log' ? (
           <LogTab {...props} />
         ) : (
@@ -78,10 +89,11 @@ export function CharacterSheet({ id, tab }: { id: string; tab: string }) {
             <HpBlock {...props} />
             <DeathSaves {...props} />
             <Conditions {...props} />
+            <Attacks {...props} />
             <Resources {...props} />
+            <ItemCharges {...props} />
             <SpellSlots {...props} />
             <Rests {...props} />
-            <Currencies {...props} />
           </>
         )}
       </main>

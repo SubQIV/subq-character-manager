@@ -5,6 +5,7 @@ Run from the repository root after `npm run build`:
 Needs Python with Playwright and Chromium installed.
 """
 import os
+import re
 import subprocess
 import sys
 import time
@@ -108,7 +109,8 @@ try:
         expect(page.get_by_label('Corruption value')).to_contain_text('2')
         check('Corruption meter counts up', '2' in page.get_by_label('Corruption value').inner_text())
 
-        # Custom currency
+        # Custom currency, on the Gear tab
+        page.get_by_role('link', name='Gear').click()
         page.get_by_role('button', name='New currency').click()
         dialog = page.locator('dialog[open]')
         field(dialog, 'Name').fill('Diomund Rays')
@@ -118,6 +120,7 @@ try:
         field(dialog, 'Amount').fill('250')
         dialog.get_by_role('button', name='Add', exact=True).click()
         check('Custom currency adds', page.get_by_role('button', name='Diomund Rays: 250. Add or spend').is_visible())
+        page.get_by_role('link', name='Play').click()
 
         # Conditions with rules text
         page.get_by_role('button', name='Add condition').click()
@@ -197,6 +200,117 @@ try:
         row = page.locator('.char-row').first.inner_text()
         check('List shows the character and HP', 'Howerd' in row and '25' in row, row)
         page.screenshot(path=f'{OUT}/09-list.png')
+
+        # ---- Checkpoint 2: gear, attacks, magic items, notes, portrait ----
+        page.locator('.char-row').first.click()
+        page.get_by_role('link', name='Gear').click()
+
+        def add_item(name, setup):
+            page.get_by_role('button', name='Add item').click()
+            dialog = page.locator('dialog[open]')
+            field(dialog, 'Name').fill(name)
+            setup(dialog)
+            dialog.get_by_role('button', name='Add item').click()
+            expect(page.locator('dialog[open]')).to_have_count(0)
+
+        def longsword(d):
+            d.get_by_label('Weapon').check()
+            field(d, 'Damage').fill('1d8')
+            field(d, 'Damage type').fill('slashing')
+            field(d, 'Two-handed').fill('1d10')
+            field(d, 'Weight, lb each').fill('3')
+
+        def chain_mail(d):
+            d.get_by_label('Armor or shield').check()
+            field(d, 'Kind').select_option('heavy')
+            field(d, 'Base AC').fill('16')
+            field(d, 'Strength needed').fill('13')
+            d.get_by_label('Disadvantage on Stealth').check()
+            field(d, 'Weight, lb each').fill('55')
+
+        def wand(d):
+            d.get_by_label('Magic item').check()
+            d.get_by_label('Has charges').check()
+            field(d, 'Maximum').fill('7')
+            field(d, 'Current').fill('7')
+            field(d, 'How many come back').fill('1d6+1')
+
+        def cloak(d):
+            d.get_by_label('Magic item').check()
+            d.get_by_label('Requires attunement').check()
+            d.get_by_role('button', name='Add a bonus').click()
+            field(d, "Doesn't stack with (optional)").fill('protection')
+
+        def backpack(d):
+            d.get_by_label('It holds other items').check()
+            field(d, 'Weight, lb each').fill('5')
+
+        add_item('Longsword', longsword)
+        add_item('Chain mail', chain_mail)
+        add_item('Wand of Magic Missiles', wand)
+        add_item('Cloak of Protection', cloak)
+        add_item('Backpack', backpack)
+        add_item('Rope', lambda d: field(d, 'Weight, lb each').fill('10'))
+
+        def open_item(name):
+            page.locator('.list li button.line', has_text=name).first.click()
+            return page.locator('dialog[open]')
+
+        d = open_item('Longsword'); d.get_by_role('button', name='Equip').click(); d.get_by_role('button', name='Close').click()
+        d = open_item('Chain mail'); d.get_by_role('button', name='Equip').click(); d.get_by_role('button', name='Close').click()
+        d = open_item('Cloak of Protection'); d.get_by_role('button', name='Equip').click(); d.get_by_role('button', name='Attune').click(); d.get_by_role('button', name='Close').click()
+        d = open_item('Rope'); field(d, 'Kept in').select_option(label='Backpack'); d.get_by_role('button', name='Close').click()
+        check('Attunement shows 1 of 3', page.locator('.box', has_text='Attunement').inner_text().endswith('1/3'))
+        carried = page.locator('.box', has_text='Carried').inner_text()
+        check('Carried weight adds up (3 + 55 + 5 + 10)', '73 lb' in carried, carried)
+        page.get_by_role('button', name='Gold: 0. Add or spend').click()
+        field(page.locator('dialog[open]'), 'Amount').fill('50')
+        page.locator('dialog[open]').get_by_role('button', name='Add', exact=True).click()
+        check('Coins live on the Gear tab', page.get_by_role('button', name='Gold: 50. Add or spend').is_visible())
+        page.screenshot(path=f'{OUT}/12-gear.png', full_page=True)
+
+        history_labels = []
+        page.get_by_role('link', name='Stats').click()
+        ac_box = page.get_by_role('button', name=re.compile(r'^Armor Class: \d+'))
+        ac_label = ac_box.get_attribute('aria-label')
+        check('Chain mail replaces unarmored AC; cloak and ring do not stack (16 + 1)', ac_label.startswith('Armor Class: 17.'), ac_label)
+        speed_label = page.get_by_role('button', name=re.compile(r'^Speed:')).get_attribute('aria-label')
+        check('Exhaustion still halves speed with armor on (Str 16 meets 13)', speed_label.startswith('Speed: 12 ft'), speed_label)
+
+        page.get_by_role('link', name='Play').click()
+        attack = page.locator('section', has=page.get_by_role('heading', name='Attacks')).inner_text()
+        check('Longsword attack: +5, 1d8+3 slashing, 1d10+3 two-handed', '+5' in attack and '1d8+3 slashing' in attack and '1d10+3 slashing two-handed' in attack, attack)
+        for _ in range(3):
+            page.get_by_role('button', name='Use a charge of Wand of Magic Missiles').click()
+        check('Wand charges spend from the Play tab', '4/7' in page.locator('.tracker', has_text='Wand of Magic Missiles').inner_text())
+        page.get_by_role('button', name='Dawn').click()
+        dialog = page.locator('dialog[open]')
+        check('Dawn asks for the wand roll first', dialog.get_by_role('button', name='Apply dawn').is_disabled())
+        field(dialog, 'Wand of Magic Missiles regains 1d6+1. What did you roll?').fill('5')
+        dialog.get_by_role('button', name='Apply dawn').click()
+        check('Dawn recharge stops at the maximum', '7/7' in page.locator('.tracker', has_text='Wand of Magic Missiles').inner_text())
+        page.screenshot(path=f'{OUT}/13-play-attacks.png', full_page=True)
+
+        page.get_by_role('link', name='Notes').click()
+        page.get_by_role('button', name='New note').click()
+        field(page.locator('dialog[open]'), 'Title').fill('Session 1')
+        field(page.locator('dialog[open]'), 'Note').fill('Met a suspicious innkeeper.')
+        page.locator('dialog[open]').get_by_role('button', name='Add note').click()
+        field(page, 'Backstory').fill('Exiled from the mountain halls.')
+        page.get_by_role('heading', name='Personality').click()
+        portrait = page.screenshot(clip={'x': 0, 'y': 0, 'width': 300, 'height': 300})
+        page.locator('input[type=file]').set_input_files({'name': 'howerd.png', 'mimeType': 'image/png', 'buffer': portrait})
+        expect(page.locator('.topbar img')).to_have_count(1)
+        check('Portrait shows in the header', page.locator('.topbar img').count() == 1)
+        page.screenshot(path=f'{OUT}/14-notes.png', full_page=True)
+        page.reload()
+        expect(page.locator('.topbar img')).to_have_count(1)
+        backstory = field(page, 'Backstory').input_value()
+        check('Notes, backstory and portrait survive a reload', backstory == 'Exiled from the mountain halls.' and page.get_by_text('Session 1').is_visible(), backstory)
+        page.get_by_role('link', name='History').click()
+        page.get_by_role('button', name='Gear and money').click()
+        gear_labels = page.locator('.history-label').all_inner_texts()
+        check('Gear history includes equip with AC change', any(l.startswith('Equipped Chain mail (AC') for l in gear_labels), gear_labels[:6])
 
         # Dark mode and a tablet-sized screen
         dark = browser.new_context(viewport={'width': 412, 'height': 915}, device_scale_factor=2, color_scheme='dark')

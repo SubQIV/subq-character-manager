@@ -3,13 +3,15 @@ import { RETENTION, sortedEntries, undoneIds, type Entry } from '../../model/cha
 import { store } from '../../store/characters';
 import { timeLabel, type TabProps } from '../common';
 
-const FILTERS: { id: string; label: string; match: (entry: Entry) => boolean }[] = [
+const FILTERS: { id: string; label: string; match: (entry: Entry, money: Set<string>) => boolean }[] = [
   { id: 'all', label: 'Everything', match: () => true },
   { id: 'hp', label: 'Hit points', match: (e) => e.scope.includes('hp') },
-  { id: 'resources', label: 'Resources', match: (e) => e.scope.some((s) => s.startsWith('tracker:')) && !e.scope.includes('rest') },
+  { id: 'resources', label: 'Resources', match: (e, money) => e.scope.some((s) => s.startsWith('tracker:') && !money.has(s)) && !e.scope.includes('rest') },
   { id: 'conditions', label: 'Conditions', match: (e) => e.scope.includes('conditions') || e.scope.includes('exhaustion') || e.scope.includes('inspiration') },
   { id: 'slots', label: 'Spell slots', match: (e) => e.scope.includes('slots') },
   { id: 'rest', label: 'Rests', match: (e) => e.scope.includes('rest') },
+  { id: 'gear', label: 'Gear and money', match: (e, money) => e.scope.includes('inventory') || (e.scope.some((s) => money.has(s)) && !e.scope.includes('rest')) },
+  { id: 'notes', label: 'Notes', match: (e) => e.scope.includes('notes') },
   { id: 'stats', label: 'Stats and details', match: (e) => e.scope.some((s) => ['stats', 'identity', 'classes', 'modifiers', 'ac'].includes(s)) },
 ];
 
@@ -18,7 +20,10 @@ export function LogTab({ id, view }: TabProps) {
   const { doc } = view;
   const undone = undoneIds(doc.entries);
   const match = FILTERS.find((f) => f.id === filter)!.match;
-  const entries = sortedEntries(doc.entries).reverse().filter(match);
+  const money = new Set(view.state.trackers.filter((t) => t.kind === 'currency').map((t) => `tracker:${t.id}`));
+  const entries = sortedEntries(doc.entries)
+    .reverse()
+    .filter((entry) => match(entry, money));
 
   return (
     <div className="stack">

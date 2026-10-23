@@ -7,7 +7,9 @@ Live app: https://subqiv.github.io/subq-character-manager/
 ## Status
 
 - Phase 0 (Drive test) passed on 23 Oct 2026. The test page stays at `/phase0/`.
-- Phase 1 in progress. Checkpoint 1: manual character entry, hit points, custom trackers and currencies, conditions with rules text, spell slots, rests, calculations you can inspect and override, and full history with undo. Stored on the device.
+- Phase 1 in progress, stored on the device:
+  - Checkpoint 1: manual character entry, hit points, custom trackers and currencies, conditions with rules text, spell slots, rests, calculations you can inspect and override, and full history with undo.
+  - Checkpoint 2: inventory with containers and weight, weapons with attack calculations, armor, magic items with attunement, identification and charges (recharging on rests and at dawn), notes, backstory, personality and portraits.
 
 ## Layout
 

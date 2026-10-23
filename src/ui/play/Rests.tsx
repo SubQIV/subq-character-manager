@@ -1,11 +1,52 @@
 import { useState } from 'react';
 import * as A from '../../model/actions';
 import { abilityMod, signed } from '../../model/derive';
-import type { HitDie } from '../../model/types';
+import type { CharacterState, Charges, HitDie } from '../../model/types';
 import { Sheet, toInt, type TabProps } from '../common';
 
+/** Boxes for items whose recharge is a roll, e.g. a wand that regains 1d6+1 at dawn. */
+function useRechargeRolls(state: CharacterState, rules: Charges['recharge'][]) {
+  const items = A.rechargeRollsNeeded(state, rules);
+  const [text, setText] = useState<Record<string, string>>({});
+  const rolls: A.RechargeRolls = {};
+  let valid = true;
+  for (const item of items) {
+    const value = toInt(text[item.id] ?? '');
+    if (value === null || value < 0) valid = false;
+    else rolls[item.id] = value;
+  }
+  const inputs = items.map((item) => (
+    <label key={item.id} className="field">
+      <span>
+        {A.itemName(item)} regains {item.charges!.rechargeAmount}. What did you roll?
+      </span>
+      <input
+        className="input input-number"
+        type="number"
+        inputMode="numeric"
+        min={0}
+        value={text[item.id] ?? ''}
+        onChange={(event) => setText({ ...text, [item.id]: event.target.value })}
+      />
+    </label>
+  ));
+  return { rolls, valid, inputs };
+}
+
+function Effects({ label, prefix, empty }: { label: string; prefix: string; empty: string }) {
+  const effects = label.replace(new RegExp(`^${prefix}:? ?`), '').split('; ').filter(Boolean);
+  if (!effects.length) return <p className="muted" style={{ margin: 0 }}>{empty}</p>;
+  return (
+    <ul className="rules">
+      {effects.map((effect) => (
+        <li key={effect}>{effect[0].toUpperCase() + effect.slice(1)}</li>
+      ))}
+    </ul>
+  );
+}
+
 export function Rests({ view, act }: TabProps) {
-  const { state, derived } = view;
+  const { derived } = view;
   const [open, setOpen] = useState<'short' | 'long' | 'dawn' | null>(null);
   const pools = derived.hitDice;
   return (
@@ -38,17 +79,7 @@ export function Rests({ view, act }: TabProps) {
         <LongRest view={view} act={act} onDone={() => setOpen(null)} />
       </Sheet>
       <Sheet open={open === 'dawn'} title="Dawn" onClose={() => setOpen(null)}>
-        <p className="muted" style={{ margin: 0 }}>{A.dawn(state).label === 'Dawn' ? 'Nothing on this sheet resets at dawn yet.' : A.dawn(state).label}</p>
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() => {
-            act(A.dawn(state));
-            setOpen(null);
-          }}
-        >
-          Apply dawn
-        </button>
+        <Dawn view={view} act={act} onDone={() => setOpen(null)} />
       </Sheet>
     </section>
   );
@@ -65,7 +96,8 @@ function ShortRest({ view, act, onDone }: Omit<TabProps, 'id'> & { onDone: () =>
   const parsed = rolls.map((roll) => ({ die: roll.die, rolled: toInt(roll.text) }));
   const valid = parsed.every((roll) => roll.rolled !== null && roll.rolled >= 1 && roll.rolled <= roll.die);
   const healing = parsed.reduce((total, roll) => total + Math.max(0, (roll.rolled ?? 0) + con), 0);
-  const preview = A.shortRest(state, []);
+  const recharge = useRechargeRolls(state, ['short']);
+  const preview = A.shortRest(state, [], recharge.rolls);
 
   return (
     <>
@@ -107,13 +139,14 @@ function ShortRest({ view, act, onDone }: Omit<TabProps, 'id'> & { onDone: () =>
         </div>
       ))}
       {rolls.length > 0 && <p style={{ margin: 0 }}>Heals {healing} HP.</p>}
+      {recharge.inputs}
       {preview.label !== 'Short rest' && <p className="small muted" style={{ margin: 0 }}>Also: {preview.label.replace('Short rest: ', '')}.</p>}
       <button
         type="button"
         className="btn btn-primary"
-        disabled={!valid}
+        disabled={!valid || !recharge.valid}
         onClick={() => {
-          act(A.shortRest(state, parsed.map((roll) => ({ die: roll.die, rolled: roll.rolled ?? 0 }))));
+          act(A.shortRest(state, parsed.map((roll) => ({ die: roll.die, rolled: roll.rolled ?? 0 })), recharge.rolls));
           onDone();
         }}
       >
@@ -125,31 +158,48 @@ function ShortRest({ view, act, onDone }: Omit<TabProps, 'id'> & { onDone: () =>
 
 function LongRest({ view, act, onDone }: Omit<TabProps, 'id'> & { onDone: () => void }) {
   const { state, derived } = view;
-  const action = A.longRest(state, derived);
-  const effects = action.label.replace(/^Long rest:? ?/, '').split('; ').filter(Boolean);
+  const recharge = useRechargeRolls(state, ['short', 'long']);
+  const action = A.longRest(state, derived, recharge.rolls);
   return (
     <>
-      {effects.length ? (
-        <ul className="rules">
-          {effects.map((effect) => (
-            <li key={effect}>{effect[0].toUpperCase() + effect.slice(1)}</li>
-          ))}
-        </ul>
-      ) : (
-        <p className="muted" style={{ margin: 0 }}>You're already fully rested.</p>
-      )}
+      {recharge.inputs}
+      <Effects label={action.label} prefix="Long rest" empty="You're already fully rested." />
       {state.edition === '2014' && state.exhaustion > 0 && (
         <p className="small muted" style={{ margin: 0 }}>2014 rules: exhaustion only drops if you had food and drink. Undo it if you didn't.</p>
       )}
       <button
         type="button"
         className="btn btn-primary"
+        disabled={!recharge.valid}
         onClick={() => {
           act(action);
           onDone();
         }}
       >
         Finish long rest
+      </button>
+    </>
+  );
+}
+
+function Dawn({ view, act, onDone }: Omit<TabProps, 'id'> & { onDone: () => void }) {
+  const { state } = view;
+  const recharge = useRechargeRolls(state, ['dawn']);
+  const action = A.dawn(state, recharge.rolls);
+  return (
+    <>
+      {recharge.inputs}
+      <Effects label={action.label} prefix="Dawn" empty="Nothing on this sheet resets at dawn right now." />
+      <button
+        type="button"
+        className="btn btn-primary"
+        disabled={!recharge.valid}
+        onClick={() => {
+          act(action);
+          onDone();
+        }}
+      >
+        Apply dawn
       </button>
     </>
   );

@@ -59,6 +59,8 @@ export interface ClassLevel {
  */
 export type ModTarget =
   | 'ac'
+  | 'weaponAttack'
+  | 'weaponDamage'
   | 'initiative'
   | 'speed'
   | 'hpMax'
@@ -148,6 +150,26 @@ export interface ArmorInfo {
   strengthRequired: number | null;
 }
 
+export interface WeaponInfo {
+  /** Damage dice, e.g. "1d8". */
+  damage: string;
+  damageType: string;
+  /** Two-handed damage for versatile weapons, e.g. "1d10". Blank if not versatile. */
+  versatile: string;
+  ranged: boolean;
+  /** Finesse: uses Strength or Dexterity, whichever is higher. */
+  finesse: boolean;
+  proficient: boolean;
+  /** +1, +2 or +3 for magic weapons. */
+  magicBonus: number;
+  /** Range in feet, e.g. "80/320". */
+  range: string;
+  /** Other properties as text, e.g. "Light, Thrown". */
+  properties: string;
+  /** 2024 weapon mastery property, e.g. "Sap". */
+  mastery: string;
+}
+
 export interface MagicInfo {
   rarity: string;
   requiresAttunement: boolean;
@@ -172,6 +194,7 @@ export interface Item {
   /** For a bag of holding and similar: contents don't count toward carried weight. */
   ignoreContentsWeight: boolean;
   armor: ArmorInfo | null;
+  weapon: WeaponInfo | null;
   magic: MagicInfo | null;
   charges: Charges | null;
   /** Apply while equipped, and attuned if the item requires it. */
@@ -205,7 +228,8 @@ export type StatKey =
   | `ability:${Ability}`
   | `save:${Ability}`
   | `skill:${SkillId}`
-  | `passive:${SkillId}`;
+  | `passive:${SkillId}`
+  | `attack:${string}`;
 
 export interface CharacterState {
   name: string;
