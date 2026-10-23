@@ -2,17 +2,23 @@
 
 A private D&D 5e character manager (2014 and 2024 rules) for one table: Android first, works on PC, syncs through a shared Google Drive folder.
 
-Live site: https://subqiv.github.io/subq-character-manager/
+Live app: https://subqiv.github.io/subq-character-manager/
 
 ## Status
 
-Phase 0: proving that two Google accounts can share, read and edit a character file in one Drive folder, including offline edits and simultaneous saves. The test page is at `site/phase0/`.
+- Phase 0 (Drive test) passed on 23 Oct 2026. The test page stays at `/phase0/`.
+- Phase 1 in progress. Checkpoint 1: manual character entry, hit points, custom trackers and currencies, conditions with rules text, spell slots, rests, calculations you can inspect and override, and full history with undo. Stored on the device.
 
 ## Layout
 
-- `site/` is published to GitHub Pages on every push to `main`.
-- `site/phase0/` is the Drive test page. `sync.js` holds the change-log merge logic; `drive.js` wraps the Drive API.
-- `tests/` runs with `npm test` (Node's built-in test runner, no dependencies) and must pass before publishing.
+- `src/model/` the character data model, the change log (every edit is an entry; undo is an entry) and the calculations.
+- `src/packs/` the content pack format and the built-in SRD 5.1 and 5.2 packs.
+- `src/store/` on-device storage (IndexedDB) and the store the screens use.
+- `src/ui/` the screens.
+- `public/phase0/` the phase 0 Drive test page.
+- `tests/` unit tests (`npm test`); `e2e/walkthrough.py` drives the built app in a browser.
+
+`npm run check` type-checks, tests and builds. GitHub Actions runs the same checks before every publish.
 
 ## Content
 

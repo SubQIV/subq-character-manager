@@ -1,5 +1,5 @@
-import { test } from 'node:test';
-import assert from 'node:assert/strict';
+import { test } from 'vitest';
+import { assert } from 'vitest';
 import {
   newCharacter,
   validateDoc,
@@ -9,7 +9,7 @@ import {
   lastUndoable,
   missingIds,
   describeEvent,
-} from '../site/phase0/sync.js';
+} from '../public/phase0/sync.js';
 
 const hp = (id, ts, delta, device = 'a') => ({ id, ts, kind: 'hp', delta, device });
 const rest = (id, ts, value) => ({ id, ts, kind: 'hp', set: true, value, device: 'a' });
